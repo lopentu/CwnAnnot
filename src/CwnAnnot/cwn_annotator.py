@@ -5,6 +5,7 @@ import pickle
 from typing import List, Dict, Tuple, Union
 from CwnGraph import cwnio
 from CwnGraph.cwn_types import (
+    CwnNode,
     CwnSense, CwnLemma, 
     CwnRelation, CwnRelationType,
     CwnSynset, CwnIdNotFoundError)
@@ -34,7 +35,6 @@ class CwnAnnotator:
         return (self.V, self.E)
 
     def load(self, fpath):
-
         if os.path.exists(fpath):
             print("loading saved session from ", fpath)
 
@@ -53,58 +53,118 @@ class CwnAnnotator:
         with open(fpath, "wb") as fout:
             pickle.dump((self.V, self.E, self.meta), fout)    
     
-    def annotate(self, annot_action: AnnotAction, raw_id=None, data={}):
-        rec = AnnotRecord(self.annoter, annot_action, raw_id, data)
+    @property
+    def annotations(self):
+        return self.tape
+        
+    def annotate(self, 
+            annot_action: AnnotAction, 
+            annot_category: AnnotCategory,
+            raw_id=None, data={}):
+        rec = AnnotRecord(self.annoter, annot_action, annot_category, raw_id, data)
         self.tape.append(rec)
         return rec
+    
+    ##
+    ## CRUD on vertices (CwnNode, CwnSense, CwnLemma, CwnSynset)
+    ## 
+    ## There are three layers of operations:
+    ## * graph data level: set_vertex, remove_vertex
+    ## * annotation level: create_node, udpate_node, remove_node
+    ##      this level binds the data operation and annotation records
+    ## * CWN type level: create_lemma, update_lemma, remove_lemma,
+    ##      create_sense, update_sense, ...
+    ##      This level provides operation interface to end users.
 
-    def create_lemma(self, lemma:CwnLemma):                        
-        self.set_lemma(lemma)
-        self.annotate(lemma.id, 
-            AnnotAction.Create, AnnotCategory.Lemma,
-            raw_id=lemma.id, data=lemma.data)
-        return lemma
+    def set_vertex(self, node: CwnNode):
+        self.V[node.id] = node.data()
+    
+    def remove_vertex(self, node: CwnNode):
+        if node.id in self.V:
+            del self.V[node.id]
+        else:
+            raise CwnIdNotFoundError(f"{node.id} not found when deleting")
 
-    def create_sense(self, definition, raw_id=None):
-        node_id = self.new_node_id()
-        self.record(node_id, AnnotAction.Edit,
-                    raw_id=raw_id, annot_type="sense")
+    def create_node(self, node: CwnNode, annot_category: AnnotCategory):
+        self.set_vertex(node)
+        self.annotate( 
+            AnnotAction.Create, annot_category,
+            raw_id=node.id, data=node.data)
+        return node
 
-        new_sense = CwnSense(node_id, self)
-        new_sense.definition = definition
-        self.set_sense(new_sense)
-        return new_sense
+    def update_node(self, node: CwnNode, annot_category: AnnotCategory):
+        self.set_vertex(node)
+        self.annotate( 
+            AnnotAction.Edit, annot_category,
+            raw_id=node.id, data=node.data)
+        return node
 
-    def create_relation(self, src_id:str, tgt_id:str, rel_type:CwnRelationType):
-        raw_ids = (src_id, tgt_id)
-        annot_src_id = self.get_id(src_id)
-        annot_tgt_id = self.get_id(tgt_id)        
-        edge_id = (annot_src_id, annot_tgt_id)
+    def remove_node(self, node: CwnNode, annot_category: AnnotCategory):        
+        self.delete_vertex(node)
+        self.annotate( 
+            AnnotAction.Delete, annot_category,
+            raw_id=node.id, data={})
 
-        if not self.get_node_data(annot_src_id):
-            raise CwnIdNotFoundError(f"{src_id} not found")
-        if not self.get_node_data(annot_tgt_id):
-            raise CwnIdNotFoundError(f"{tgt_id} not found")
+    def create_lemma(self, lemma: CwnLemma):                        
+        self.create_node(lemma, AnnotCategory.Lemma)
 
-        self.record(edge_id, AnnotAction.Edit,
-                    raw_id=raw_ids, annot_type="relation")
-        
-        new_rel = CwnRelation(edge_id, self)        
-        new_rel.relation_type = rel_type        
-        self.set_relation(new_rel)
-        return new_rel
+    def create_sense(self, sense: CwnSense):
+        self.create_node(sense, AnnotCategory.Sense)
+    
+    def create_synset(self, synset: CwnSynset):
+        self.create_node(synset, AnnotCategory.Synset)    
 
-    def set_lemma(self, cwn_lemma: CwnLemma):
-        self.V[cwn_lemma.id] = cwn_lemma.data()
+    def update_lemma(self, lemma: CwnLemma):
+        self.update_node(lemma, AnnotCategory.Lemma)
+    
+    def update_sense(self, sense: CwnSense):
+        self.update_node(sense, AnnotCategory.Sense)
+    
+    def update_synset(self, synset: CwnSynset):
+        self.update_node(synset, AnnotCategory.Synset)
 
-    def set_sense(self, cwn_sense: CwnSense):
-        self.V[cwn_sense.id] = cwn_sense.data()
+    def remove_lemma(self, lemma: CwnLemma):
+        self.remove_node(lemma, AnnotCategory.Lemma)
 
-    def set_synset(self, cwn_synset: CwnSense):
-        self.V[cwn_synset.id] = cwn_synset.data()
+    def remove_sense(self, sense: CwnSense):
+        self.remove_node(sense, AnnotCategory.Sense)
+    
+    def remove_synset(self, synset: CwnSynset):
+        self.remove_node(synset, AnnotCategory.Synset)
 
-    def set_relation(self, cwn_relation: CwnRelation):
+    ##
+    ## CRUD on edges (CwnRelation)
+    ##     
+    def set_edge(self, cwn_relation: CwnRelation):
         self.E[cwn_relation.id] = cwn_relation.data()
+    
+    def remove_edge(self, cwn_relation: CwnRelation):
+        if cwn_relation.id in self.E:
+            del self.E[cwn_relation.id]
+        else:
+            raise CwnIdNotFoundError(f"{cwn_relation.id} not found when deleting edge")
+
+    def create_relation(self, relation: CwnRelation):                
+        self.set_edge(relation)
+        self.annotate(AnnotAction.Create, AnnotCategory.Relation,
+                    raw_id=relation.id, data=relation.data)                
+        return relation
+    
+    def update_relation(self, relation: CwnRelation):                
+        self.set_edge(relation)
+        self.annotate(AnnotAction.Update, AnnotCategory.Relation,
+                    raw_id=relation.id, data=relation.data)                
+        return relation
+    
+    def remove_relation(self, relation: CwnRelation):                
+        self.remove_edge(relation)
+        self.annotate(AnnotAction.Delete, AnnotCategory.Relation,
+                    raw_id=relation.id, data={})                
+        return relation
+
+    
+
+
 
     def remove_lemma(self, cwn_lemma: Union[str, CwnLemma]):
         if isinstance(cwn_lemma, CwnLemma):
