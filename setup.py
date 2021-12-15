@@ -31,5 +31,7 @@ setup(
     keywords='language resource, nlp, annnotation',
     package_dir={'': 'src'},
     python_requires='>=3.6, <4',
-    install_requires=['CwnGraph']
+    install_requires=[
+        "CwnGraph",
+        "google-cloud-firestore"]
 )
