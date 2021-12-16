@@ -14,13 +14,14 @@ from .cwn_annot_types import *
 from .cwn_overwatch import CwnOverwatch
 
 class CwnAnnotator:
-    def __init__(self, cgu:CwnGraphUtils, annoter):
+    def __init__(self, cgu:CwnGraphUtils, annoter: str):
         self.cgu = cgu
         self.annoter = annoter
         self.V = cgu.V.copy()
         self.E = cgu.E.copy()
         self.tape: List[AnnotRecord] = []
         self.annot_meta = {
+            "annoter": annoter,
             "base_data": cgu.meta,
             "annot_date": datetime.now().strftime("%y%m%d%H%M%S"),
         }
@@ -56,7 +57,7 @@ class CwnAnnotator:
     @property
     def annotations(self):
         return self.tape
-        
+
     def annotate(self, 
             annot_action: AnnotAction, 
             annot_category: AnnotCategory,
@@ -160,56 +161,4 @@ class CwnAnnotator:
         self.remove_edge(relation)
         self.annotate(AnnotAction.Delete, AnnotCategory.Relation,
                     raw_id=relation.id, data={})                
-        return relation
-
-    
-
-
-
-    def remove_lemma(self, cwn_lemma: Union[str, CwnLemma]):
-        if isinstance(cwn_lemma, CwnLemma):
-            lemma_id = cwn_lemma.id
-        else:
-            lemma_id = cwn_lemma
-
-        if lemma_id in self.V:
-            self.record(lemma_id, AnnotAction.Delete, annot_type="lemma")
-            del self.V[lemma_id]
-            return True
-        else:
-            return False
-
-    def remove_sense(self, cwn_sense: Union[str, CwnSense]):
-        if isinstance(cwn_sense, CwnSense):
-            sense_id = cwn_sense.id
-        else:
-            sense_id = cwn_sense
-
-        if sense_id in self.V:            
-            self.record(sense_id, AnnotAction.Delete, annot_type="sense")            
-            del self.V[sense_id]
-            return True
-        else:
-            return False
-
-    def remove_relation(self, cwn_relation:Tuple[str, str, CwnRelationType]):
-        if isinstance(cwn_relation, CwnRelation):
-            relation_id = cwn_relation.id
-        else:
-            relation_id = cwn_relation
-
-        if relation_id in self.E:
-            self.record(relation_id, AnnotAction.Delete, annot_type="relation")
-            del self.E[relation_id]
-            return True
-        else:
-            return False
-
-    def get_node_data(self, node_id):
-        node_data = self.V.get(node_id, {})
-        return node_data
-
-    def get_edge_data(self, edge_id):
-        edge_data = self.E.get(edge_id, {})
-
-        return edge_data
+        return relation    
