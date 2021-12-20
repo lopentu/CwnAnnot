@@ -103,20 +103,5 @@ class CwnOverwatch:
                 new_sense_id = prefix + "0"
             else:
                 new_sense_id = prefix + str(new_sense_id)
-        return lemma_id + new_sense_id
-
-    def query_annotations(self, node_type, annot_action, annoter):
-        pass
-
-    def query_senses(self, sense_id):
-        pass
-
-    def query_lemmas(self, lemma_id):
-        pass
-
-    def query_synset(self, synset_id):
-        pass
-
-    def query_relations(self, edge_id):
-        pass
+        return lemma_id + new_sense_id    
 

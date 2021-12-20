@@ -1,5 +1,7 @@
 from CwnGraph import CwnGraphUtils
 
+from CwnAnnot.cwn_annot_types import AnnotCommit
+
 class CwnLinage:
     __instance = None
 
@@ -14,8 +16,23 @@ class CwnLinage:
         if CwnLinage.__instance is not None:
             raise ValueError("CwnLinage is a singleton class. Use getInstance().")
     
-    def get_hash(self, cwn: CwnGraphUtils):
+    def create_commit(self, commit: AnnotCommit):
         pass
-    
-    def get_parent(self, cwn_version):
+
+    def get_commit(self, commit_id) -> AnnotCommit:
+        pass
+
+    def create_branch(self, base_image, branch_label):
+        pass
+
+    def get_branch(self, branch_label):
+        pass
+
+    def delete_branch(self, branch_label):
+        pass
+
+    def get_image(self, image_label):
+        pass
+
+    def create_image(self, V, E, meta):
         pass

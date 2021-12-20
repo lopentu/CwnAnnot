@@ -10,6 +10,8 @@ from CwnGraph.cwn_types import (
     CwnRelation, CwnRelationType,
     CwnSynset, CwnIdNotFoundError)
 from CwnGraph.cwn_graph_utils import CwnGraphUtils
+
+from CwnAnnot.cwn_patcher import CwnPatcher
 from .cwn_annot_types import *
 from .cwn_overwatch import CwnOverwatch
 
@@ -19,10 +21,10 @@ class CwnAnnotator:
         self.annoter = annoter
         self.V = cgu.V.copy()
         self.E = cgu.E.copy()
+        self.meta = cgu.meta.copy()
         self.tape: List[AnnotRecord] = []
         self.annot_meta = {
-            "annoter": annoter,
-            "base_data": cgu.meta,
+            "annoter": annoter,            
             "annot_date": datetime.now().strftime("%y%m%d%H%M%S"),
         }
 
@@ -54,9 +56,12 @@ class CwnAnnotator:
         with open(fpath, "wb") as fout:
             pickle.dump((self.V, self.E, self.meta), fout)    
     
-    @property
-    def annotations(self):
-        return self.tape
+    def patch(self, commit: AnnotCommit):
+        patcher = CwnPatcher(commit)
+        self.V, self.E, self.meta = patcher.patch(self.V, self.E, self.meta)
+    
+    def commit(self):
+        return AnnotCommit(self.tape)
 
     def annotate(self, 
             annot_action: AnnotAction, 
