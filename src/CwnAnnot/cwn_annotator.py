@@ -187,7 +187,7 @@ class CwnAnnotator:
         commit_id = AnnotCommit.compute_commit_id(self.tape)
         return AnnotCommit(self.meta, commit_id, self.tape)
     
-    def compile(self, note="") -> CwnImage:
+    def compile(self, note="") -> Tuple[CwnImage, AnnotBundle]:
         bundle_label = "bundle-" + self.meta["session"]
 
         img_meta = {
@@ -204,7 +204,9 @@ class CwnAnnotator:
             "target_image": img_meta["image_id"],
             "annoter": self.meta["annoter"],
             "timestamp": datetime.timestamp(datetime.now())
-        }        
-        bundle = AnnotBundle(bundle_label, bundle_meta, self.patched_commits)
+        }      
+
+        commit_ids = [x.commit_id for x in self.patched_commits]  
+        bundle = AnnotBundle(bundle_label, bundle_meta, commit_ids)
 
         return img, bundle
