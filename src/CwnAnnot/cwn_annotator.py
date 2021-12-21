@@ -16,17 +16,20 @@ from .cwn_annot_types import *
 from .cwn_overwatch import CwnOverwatch
 
 class CwnAnnotator:
-    def __init__(self, cgu:CwnGraphUtils, annoter: str):
+    def __init__(self, cgu:CwnGraphUtils, 
+                annoter: str, 
+                session_name: str):
         self.cgu = cgu
         self.annoter = annoter
         self.V = cgu.V.copy()
         self.E = cgu.E.copy()
         self.meta = cgu.meta.copy()
         self.tape: List[AnnotRecord] = []
-        self.annot_meta = {
-            "annoter": annoter,            
+        self.meta.update({
+            "annoter": annoter,
+            "session": session_name,
             "annot_date": datetime.now().strftime("%y%m%d%H%M%S"),
-        }
+        })
 
     def __repr__(self):
         n_edit = sum(1 for x in self.tape if x.action == AnnotAction.Edit)
@@ -55,13 +58,6 @@ class CwnAnnotator:
         cwnio.dump_annot_json(self.meta, self.V, self.E, fpath)
         with open(fpath, "wb") as fout:
             pickle.dump((self.V, self.E, self.meta), fout)    
-    
-    def patch(self, commit: AnnotCommit):
-        patcher = CwnPatcher(commit)
-        self.V, self.E, self.meta = patcher.patch(self.V, self.E, self.meta)
-    
-    def commit(self):
-        return AnnotCommit(self.tape)
 
     def annotate(self, 
             annot_action: AnnotAction, 
@@ -167,3 +163,22 @@ class CwnAnnotator:
         self.annotate(AnnotAction.Delete, AnnotCategory.Relation,
                     raw_id=relation.id, data={})                
         return relation    
+    
+    ## 
+    ## Interaction methods
+    ##
+    def patch(self, commit: AnnotCommit) -> None:
+        patcher = CwnPatcher(commit)
+        self.V, self.E, self.meta = patcher.patch(self.V, self.E, self.meta)
+    
+    def patch_all(self, bundle: AnnotBundle) -> None:
+        bundle.load_commits()
+        for commit_x in bundle.commits:
+            self.patch(commit_x)
+
+    def commit(self) -> AnnotCommit:
+        commit_id = AnnotCommit.compute_commit_id(self.tape)
+        return AnnotCommit(self.meta, commit_id, self.tape)
+    
+    def compile(self) -> CwnImage:
+        img = CwnImage(self.V, self.E, self.meta)

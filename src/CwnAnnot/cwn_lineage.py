@@ -22,13 +22,13 @@ class CwnLinage:
     def get_commit(self, commit_id) -> AnnotCommit:
         pass
 
-    def create_branch(self, base_image, branch_label):
+    def create_bundle(self, base_image, bundle_label):
         pass
 
-    def get_branch(self, branch_label):
+    def get_bundle(self, bundle_label):
         pass
 
-    def delete_branch(self, branch_label):
+    def delete_bundle(self, bundle_label):
         pass
 
     def get_image(self, image_label):

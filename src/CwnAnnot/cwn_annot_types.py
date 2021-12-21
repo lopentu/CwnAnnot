@@ -1,8 +1,10 @@
 from enum import Enum
 from re import L
-from typing import List
+from dataclasses import dataclass
 from datetime import datetime
+from typing import List, Dict
 from hashlib import sha1
+from CwnGraph import CwnImage
 
 class AnnotAction(Enum):
     Create = 1
@@ -47,9 +49,26 @@ class AnnotRecord:
     def __hash__(self):
         return hash(self.annot_id)
 
-class AnnotCommit:
-    def __init__(self, commit_id, tape=[], meta={}):
-        self.meta = meta
+
+@dataclass
+class CommitMetadata:    
+    timestamp: float = 0.
+    annoter: str = ""
+    note: str = ""
+
+    @classmethod
+    def from_dict(cls, indict):
+        inst = cls()
+        for k, v in indict:
+            if k not in inst.__dict__: continue
+            inst.__dict__[k] = v
+        return inst
+
+class AnnotCommit:    
+    def __init__(self, meta: Dict[str, str], 
+                    commit_id: str, 
+                    tape: List[AnnotRecord]):
+        self.meta = AnnotCommit.from_dict(meta)
         self.commit_id = commit_id
         self.__tape: List[AnnotRecord] = tape
     
@@ -64,19 +83,35 @@ class AnnotCommit:
             h.update(hash(rec_x).to_bytes(32, 'little'))
         return h.digest().hex()
 
-    @classmethod
-    def create(cls, tape: List[AnnotRecord], commit_meta): 
-        commit_id = AnnotCommit.compute_commit_id(tape)
-        AnnotCommit(commit_id, commit_meta, tape)
 
-class AnnotBranch:
-    def __init__(self, commits, top_image=None):
-        self.commits: List[AnnotCommit] = commits
-        self.__top_image = top_image
+@dataclass
+class BundleMetadata:
+    base_image: str = ""
+    target_image: str = "" 
+    label: str = ""
+    timestamp: float = 0.
+    annoter: str = ""
+    note: str = ""
+
+    @classmethod
+    def from_dict(cls, indict):
+        inst = cls()
+        for k, v in indict:
+            if k not in inst.__dict__: continue
+            inst.__dict__[k] = v
+        return inst
+
+class AnnotBundle:
+    def __init__(self, meta: Dict[str, str], 
+                 commit_ids: List[str]):
+        self.meta: BundleMetadata = BundleMetadata.form_dict(meta)
+        self.commit_ids = commit_ids                
+        self.commits: Dict[str, AnnotCommit] = {}
     
     @property
-    def top_image(self):
-        return self.__top_image
+    def target_image(self):
+        return self.meta.target_image
 
-    def has_closed(self):
-        return self.top_image is not None
+    def is_completed(self):
+        return bool(self.meta.target_image)
+
