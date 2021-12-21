@@ -11,9 +11,13 @@ from CwnGraph.cwn_types import (
     CwnSynset, CwnIdNotFoundError)
 from CwnGraph.cwn_graph_utils import CwnGraphUtils
 
-from CwnAnnot.cwn_patcher import CwnPatcher
+from .cwn_patcher import CwnPatcher
+from .cwn_lineage import CwnLineage
 from .cwn_annot_types import *
 from .cwn_overwatch import CwnOverwatch
+import logging
+
+logger = logging.getLogger("CwnAnnot.CwnAnnotator")
 
 class CwnAnnotator:
     def __init__(self, cgu:CwnGraphUtils, 
@@ -25,10 +29,10 @@ class CwnAnnotator:
         self.E = cgu.E.copy()
         self.meta = cgu.meta.copy()
         self.tape: List[AnnotRecord] = []
+        self.patched_commits: List[AnnotCommit] = []
         self.meta.update({
             "annoter": annoter,
-            "session": session_name,
-            "annot_date": datetime.now().strftime("%y%m%d%H%M%S"),
+            "session": session_name,            
         })
 
     def __repr__(self):
@@ -88,6 +92,9 @@ class CwnAnnotator:
             raise CwnIdNotFoundError(f"{node.id} not found when deleting")
 
     def create_node(self, node: CwnNode, annot_category: AnnotCategory):
+        if node.id in self.V:
+            raise ValueError(f"Node ID {node.id} already exists in CWN")
+
         self.set_vertex(node)
         self.annotate( 
             AnnotAction.Create, annot_category,
@@ -147,6 +154,8 @@ class CwnAnnotator:
             raise CwnIdNotFoundError(f"{cwn_relation.id} not found when deleting edge")
 
     def create_relation(self, relation: CwnRelation):                
+        if relation.id in self.E:
+            raise ValueError(f"Edge ID {relation.id} already exists in CWN")
         self.set_edge(relation)
         self.annotate(AnnotAction.Create, AnnotCategory.Relation,
                     raw_id=relation.id, data=relation.data)                
@@ -168,17 +177,34 @@ class CwnAnnotator:
     ## Interaction methods
     ##
     def patch(self, commit: AnnotCommit) -> None:
-        patcher = CwnPatcher(commit)
+        if commit in self.patched_commits:
+            raise ValueError("Commit already applied: "+commit.commit_id)
+        self.patched_commits.append(commit)
+        patcher = CwnPatcher(commit)        
         self.V, self.E, self.meta = patcher.patch(self.V, self.E, self.meta)
-    
-    def patch_all(self, bundle: AnnotBundle) -> None:
-        bundle.load_commits()
-        for commit_x in bundle.commits:
-            self.patch(commit_x)
 
     def commit(self) -> AnnotCommit:
         commit_id = AnnotCommit.compute_commit_id(self.tape)
         return AnnotCommit(self.meta, commit_id, self.tape)
     
-    def compile(self) -> CwnImage:
-        img = CwnImage(self.V, self.E, self.meta)
+    def compile(self, note="") -> CwnImage:
+        bundle_label = "bundle-" + self.meta["session"]
+
+        img_meta = {
+            "image_id": compute_image_id(self.V, self.E),
+            "bundle_id": bundle_label,
+            "annoter": self.annoter,
+            "timestamp": datetime.timestamp(datetime.now()),            
+            "note": note
+        }
+        img = CwnImage(self.V, self.E, img_meta)
+
+        bundle_meta = {
+            "base_image": self.meta.get("image_id", "<base-v0.2>"),
+            "target_image": img_meta["image_id"],
+            "annoter": self.meta["annoter"],
+            "timestamp": datetime.timestamp(datetime.now())
+        }        
+        bundle = AnnotBundle(bundle_label, bundle_meta, self.patched_commits)
+
+        return img, bundle
