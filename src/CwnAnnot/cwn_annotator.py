@@ -1,7 +1,4 @@
-import os
-import json
 from datetime import datetime
-import pickle
 from typing import List, Dict, Tuple, Union
 from CwnGraph import cwnio
 from CwnGraph.cwn_types import (
@@ -10,29 +7,31 @@ from CwnGraph.cwn_types import (
     CwnRelation, CwnRelationType,
     CwnSynset, CwnIdNotFoundError)
 from CwnGraph.cwn_graph_utils import CwnGraphUtils
-
-from .cwn_patcher import CwnPatcher
-from .cwn_lineage import CwnLineage
+from .cwn_patcher import CwnPatcher, PatchError
 from .cwn_annot_types import *
-from .cwn_overwatch import CwnOverwatch
 import logging
 
 logger = logging.getLogger("CwnAnnot.CwnAnnotator")
 
-class CwnAnnotator:
+class CwnAnnotator(CwnGraphUtils):
     def __init__(self, cgu:CwnGraphUtils, 
                 annoter: str, 
-                session_name: str):
-        self.cgu = cgu
+                session_name: str,
+                timestamp: float=0.):        
         self.annoter = annoter
-        self.V = cgu.V.copy()
-        self.E = cgu.E.copy()
-        self.meta = cgu.meta.copy()
+        V = cgu.V.copy()
+        E = cgu.E.copy()
+        meta = cgu.meta.copy()
+        super(CwnAnnotator, self).__init__(V, E, meta)
+
         self.tape: List[AnnotRecord] = []
         self.patched_commits: List[AnnotCommit] = []
+        if timestamp == 0.:
+            timestamp = datetime.timestamp(datetime.now())
         self.meta.update({
             "annoter": annoter,
-            "session": session_name,            
+            "session": session_name,        
+            "timestamp": timestamp    
         })
 
     def __repr__(self):
@@ -40,34 +39,12 @@ class CwnAnnotator:
         n_delete = sum(1 for x in self.tape if x.action == AnnotAction.Delete)
         return f"<CwnAnnotator: {self.label}> ({n_edit} Edits, {n_delete} Deletes)"
 
-    @property
-    def data(self):
-        return (self.V, self.E)
-
-    def load(self, fpath):
-        if os.path.exists(fpath):
-            print("loading saved session from ", fpath)
-
-            self.meta, self.V, self.E = \
-                cwnio.load_annot_json(fpath)
-            return True
-
-        else:
-            print("cannot find ", fpath)
-            return False
-
-    def save(self, fpath):
-        label = self.meta["label"]
-        cwnio.ensure_dir("annot")
-        cwnio.dump_annot_json(self.meta, self.V, self.E, fpath)
-        with open(fpath, "wb") as fout:
-            pickle.dump((self.V, self.E, self.meta), fout)    
-
     def annotate(self, 
             annot_action: AnnotAction, 
             annot_category: AnnotCategory,
             raw_id=None, data={}):
-        rec = AnnotRecord(self.annoter, annot_action, annot_category, raw_id, data)
+        rec = AnnotRecord(self.annoter, annot_action, annot_category, raw_id, 
+                        self.meta["timestamp"], data)
         self.tape.append(rec)
         return rec
     
@@ -98,14 +75,14 @@ class CwnAnnotator:
         self.set_vertex(node)
         self.annotate( 
             AnnotAction.Create, annot_category,
-            raw_id=node.id, data=node.data)
+            raw_id=node.id, data=node.data())
         return node
 
     def update_node(self, node: CwnNode, annot_category: AnnotCategory):
         self.set_vertex(node)
         self.annotate( 
             AnnotAction.Edit, annot_category,
-            raw_id=node.id, data=node.data)
+            raw_id=node.id, data=node.data())
         return node
 
     def remove_node(self, node: CwnNode, annot_category: AnnotCategory):        
@@ -115,22 +92,22 @@ class CwnAnnotator:
             raw_id=node.id, data={})
 
     def create_lemma(self, lemma: CwnLemma):                        
-        self.create_node(lemma, AnnotCategory.Lemma)
+        return self.create_node(lemma, AnnotCategory.Lemma)
 
     def create_sense(self, sense: CwnSense):
-        self.create_node(sense, AnnotCategory.Sense)
+        return self.create_node(sense, AnnotCategory.Sense)
     
     def create_synset(self, synset: CwnSynset):
-        self.create_node(synset, AnnotCategory.Synset)    
+        return self.create_node(synset, AnnotCategory.Synset)    
 
     def update_lemma(self, lemma: CwnLemma):
-        self.update_node(lemma, AnnotCategory.Lemma)
+        return self.update_node(lemma, AnnotCategory.Lemma)
     
     def update_sense(self, sense: CwnSense):
-        self.update_node(sense, AnnotCategory.Sense)
+        return self.update_node(sense, AnnotCategory.Sense)
     
     def update_synset(self, synset: CwnSynset):
-        self.update_node(synset, AnnotCategory.Synset)
+        return self.update_node(synset, AnnotCategory.Synset)
 
     def remove_lemma(self, lemma: CwnLemma):
         self.remove_node(lemma, AnnotCategory.Lemma)
@@ -145,11 +122,22 @@ class CwnAnnotator:
     ## CRUD on edges (CwnRelation)
     ##     
     def set_edge(self, cwn_relation: CwnRelation):
-        self.E[cwn_relation.id] = cwn_relation.data()
+        edge_id = cwn_relation.id
+        self.E[edge_id] = cwn_relation.data()
+        src_id, tgt_id = edge_id
+        self.edge_src_index.setdefault(src_id, []).append(edge_id)
+        self.edge_tgt_index.setdefault(tgt_id, []).append(edge_id)
     
     def remove_edge(self, cwn_relation: CwnRelation):
         if cwn_relation.id in self.E:
-            del self.E[cwn_relation.id]
+            edge_id = cwn_relation.id
+            src_id, tgt_id = edge_id
+            try:
+                self.edge_src_index.get(src_id, []).remove(edge_id)
+                self.edge_tgt_index.get(tgt_id, []).remove(edge_id)
+            except ValueError:
+                pass
+            del self.E[edge_id]
         else:
             raise CwnIdNotFoundError(f"{cwn_relation.id} not found when deleting edge")
 
@@ -158,40 +146,41 @@ class CwnAnnotator:
             raise ValueError(f"Edge ID {relation.id} already exists in CWN")
         self.set_edge(relation)
         self.annotate(AnnotAction.Create, AnnotCategory.Relation,
-                    raw_id=relation.id, data=relation.data)                
+                    raw_id=relation.id, data=relation.data())                
         return relation
     
     def update_relation(self, relation: CwnRelation):                
         self.set_edge(relation)
         self.annotate(AnnotAction.Update, AnnotCategory.Relation,
-                    raw_id=relation.id, data=relation.data)                
+                    raw_id=relation.id, data=relation.data())                
         return relation
     
     def remove_relation(self, relation: CwnRelation):                
         self.remove_edge(relation)
         self.annotate(AnnotAction.Delete, AnnotCategory.Relation,
-                    raw_id=relation.id, data={})                
-        return relation    
+                    raw_id=relation.id, data={})                        
     
     ## 
-    ## Interaction methods
+    ## Cwn Annotation Manipulation Methods (CAMM)
     ##
-    def patch(self, commit: AnnotCommit) -> None:
+    def patch(self, commit: AnnotCommit) -> List[PatchError]:
         if commit in self.patched_commits:
             raise ValueError("Commit already applied: "+commit.commit_id)
         self.patched_commits.append(commit)
         patcher = CwnPatcher(commit)        
-        self.V, self.E, self.meta = patcher.patch(self.V, self.E, self.meta)
+        patcher.patch(self.V, self.E, self.meta)
+        return patcher.errors
 
     def commit(self) -> AnnotCommit:
         commit_id = AnnotCommit.compute_commit_id(self.tape)
         return AnnotCommit(self.meta, commit_id, self.tape)
     
-    def compile(self, note="") -> Tuple[CwnImage, AnnotBundle]:
+    def compile(self, image_label, note="") -> Tuple[CwnImage, AnnotBundle]:
         bundle_label = "bundle-" + self.meta["session"]
 
         img_meta = {
             "image_id": compute_image_id(self.V, self.E),
+            "label": image_label,
             "bundle_id": bundle_label,
             "annoter": self.annoter,
             "timestamp": datetime.timestamp(datetime.now()),            

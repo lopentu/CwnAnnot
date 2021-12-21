@@ -21,10 +21,10 @@ class AnnotCategory(Enum):
     Other = 5
 
     def is_node(self):
-        return 1 <= int(self) <= 3
+        return 1 <= self.value <= 3
 
     def is_edge(self):
-        return int(self) == 4
+        return self.value == 4
 
 class AnnotError(Enum):
     DeletionError = 10
@@ -43,9 +43,12 @@ class AnnotRecord:
 
     def __post_init__(self):
         if self.timestamp == 0.:
-            self.timestamp = datetime.timestamp(datetime.now())
+            self.timestamp = datetime.timestamp(datetime.now())        
         action_label = self.annot_action.name
         self.annot_id = f"{self.annoter}-{action_label}-{self.cwn_id}-{self.timestamp}"
+
+    def __repr__(self):
+        return f"<AnnotRecord[{self.annot_action.name}/{self.annot_category.name}] ({self.cwn_id})>"
 
     def __hash__(self):
         return hash(self.annot_id)
@@ -61,6 +64,9 @@ class AnnotRecord:
         indict = indict.copy()
         indict["annot_action"] = AnnotAction[indict["annot_action"]]
         indict["annot_category"] = AnnotCategory[indict["annot_category"]]
+        cwn_id = indict["cwn_id"]
+        if isinstance(cwn_id, list):
+            indict["cwn_id"] = tuple(cwn_id)
         return AnnotRecord(**indict)
 
 @dataclass
@@ -97,7 +103,7 @@ class AnnotCommit:
             return self.commit_id == other.commit_id
         else:
             return False
-            
+
     @classmethod
     def from_dict(cls, indict):        
         meta = indict["meta"]
@@ -152,7 +158,7 @@ class AnnotBundle:
                  meta: Dict[str, str],
                  commit_ids: List[str]):
         self.label = label
-        self.meta: BundleMetadata = BundleMetadata.form_dict(meta)
+        self.meta: BundleMetadata = BundleMetadata.from_dict(meta)
         self.commit_ids = commit_ids
     
     def __repr__(self):
@@ -164,9 +170,8 @@ class AnnotBundle:
         meta = indict["meta"]        
         commit_ids = indict["commit_ids"]
         return AnnotBundle(label, meta, commit_ids)
-
-    @staticmethod
-    def compute_bundle_id():  
+    
+    def compute_bundle_id(self):  
         h = sha1()
         h.update(pickle.dumps(self.commit_ids))
         return h.digest().hex()
@@ -194,10 +199,11 @@ class AnnotBundle:
             }
         return out_dict
 
-def compute_image_id(V, E):
+def compute_image_id(V, E, base_id=""):
     from hashlib import sha1
     import pickle    
     h = sha1()
+    h.update(base_id.encode())
     h.update(pickle.dumps(V))
     h.update(pickle.dumps(E))
     return h.digest().hex()
