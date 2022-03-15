@@ -32,6 +32,14 @@ class AnnotError(Enum):
     UnsupportedAnnotError = 91
     UnknownAnnotCategory = 92
 
+@dataclass 
+class AnnotConcept:
+    new_lemma_id: str
+    new_sense_id: str
+    concept_lemma: str
+    concept_pos: str
+    concept_definition: str        
+
 @dataclass
 class AnnotRecord:
     annoter: str

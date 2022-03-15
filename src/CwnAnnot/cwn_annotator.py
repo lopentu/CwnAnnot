@@ -9,15 +9,17 @@ from CwnGraph.cwn_types import (
 from CwnGraph.cwn_graph_utils import CwnGraphUtils
 from .cwn_patcher import CwnPatcher, PatchError
 from .cwn_annot_types import *
+from .annot_utils import CwnIdCounter
 import logging
 
 logger = logging.getLogger("CwnAnnot.CwnAnnotator")
 
-class CwnAnnotator(CwnGraphUtils):
+class CwnAnnotator(CwnGraphUtils):    
     def __init__(self, cgu:CwnGraphUtils, 
                 annoter: str, 
-                session_name: str,
+                session_name: str,                
                 timestamp: float=0.):        
+
         self.annoter = annoter
         V = cgu.V.copy()
         E = cgu.E.copy()
@@ -35,9 +37,11 @@ class CwnAnnotator(CwnGraphUtils):
         })
 
     def __repr__(self):
-        n_edit = sum(1 for x in self.tape if x.action == AnnotAction.Edit)
-        n_delete = sum(1 for x in self.tape if x.action == AnnotAction.Delete)
-        return f"<CwnAnnotator: {self.label}> ({n_edit} Edits, {n_delete} Deletes)"
+        n_edit = sum(1 for x in self.tape if x.annot_action == AnnotAction.Edit)
+        n_create = sum(1 for x in self.tape if x.annot_action == AnnotAction.Create)
+        n_delete = sum(1 for x in self.tape if x.annot_action == AnnotAction.Delete)
+        label = f"{self.meta.get('annoter')}/{self.meta.get('session')}"
+        return f"<CwnAnnotator: {label}> ({n_create} Creates, {n_edit} Edits, {n_delete} Deletes)"
 
     def annotate(self, 
             annot_action: AnnotAction, 
@@ -86,7 +90,7 @@ class CwnAnnotator(CwnGraphUtils):
         return node
 
     def remove_node(self, node: CwnNode, annot_category: AnnotCategory):        
-        self.delete_vertex(node)
+        self.remove_vertex(node)
         self.annotate( 
             AnnotAction.Delete, annot_category,
             raw_id=node.id, data={})
@@ -117,6 +121,32 @@ class CwnAnnotator(CwnGraphUtils):
     
     def remove_synset(self, synset: CwnSynset):
         self.remove_node(synset, AnnotCategory.Synset)
+
+
+    ##
+    ## create Concept
+
+    def create_concept(self, concept: AnnotConcept):
+        """ create_concept(self, concept: AnnotConcept)
+
+        A shortcut method creating a pair of CwnLemma and CwnSense. 
+        They are marked with a `CN:` prefix in the `lemma` field of CwnLemma 
+        and `definition` field of CwnSense. Upon creation, the concept can only be accessed
+        with the corresponding CwnLemma and CwnSense.
+        """
+        cn_lemma = CwnLemma.create(self, 
+                    concept.new_lemma_id, 
+                    lemma=f"CN:{concept.concept_lemma}", 
+                    zhuyin="")
+        cn_sense = CwnSense.create(self,
+                    concept.new_sense_id,
+                    pos=concept.concept_pos,
+                    definition="CN:"+concept.concept_definition)
+        lemma_node = self.create_lemma(cn_lemma)
+        sense_node = self.create_sense(cn_sense)
+        rel = CwnRelation.create(self, lemma_node.id, sense_node.id, CwnRelationType.has_sense)
+        self.create_relation(rel)
+        return (lemma_node, sense_node)
 
     ##
     ## CRUD on edges (CwnRelation)
