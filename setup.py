@@ -8,7 +8,7 @@ long_description = (here / 'README.md').read_text(encoding='utf-8')
 
 setup(
     name='CwnAnnot',    
-    version='0.1.0',    
+    version='0.1.2',    
     description='A CWN Annotation Utility',
     long_description=long_description,
     long_description_content_type='text/markdown',
@@ -29,9 +29,9 @@ setup(
     ],
 
     keywords='language resource, nlp, annnotation',
+    packages=['CwnAnnot'],
     package_dir={'': 'src'},
     python_requires='>=3.6, <4',
     install_requires=[
-        "CwnGraph",
-        "google-cloud-firestore"]
+        "CwnGraph"]
 )
