@@ -41,7 +41,7 @@ class CwnPatcher:
 
     def patch_node(self, V, rec: AnnotRecord):
         if rec.annot_action == AnnotAction.Delete:
-            if rec.raw_id in V:
+            if rec.cwn_id in V:
                 del V[rec.cwn_id]
             else:
                 self.errors.append((AnnotError.DeletionError, rec.cwn_id))
